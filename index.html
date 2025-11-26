@@ -626,16 +626,6 @@
                 }
             }, [user]);
 
-            // Effect to Auto-Calculate Price in Booking Form
-            useEffect(() => {
-                if (view === 'add' && formData.service && formData.duration && servicesList.length > 0) {
-                    const selectedService = servicesList.find(s => s.name === formData.service);
-                    if (selectedService && selectedService.prices && selectedService.prices[formData.duration]) {
-                        setFormData(prev => ({ ...prev, amount: selectedService.prices[formData.duration] }));
-                    }
-                }
-            }, [formData.service, formData.duration, servicesList, view]);
-
             const formatCurrency = (val) => {
                 if (val === undefined || val === null || val === '') return '';
                 return new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(val);
@@ -850,28 +840,46 @@
                 }
             };
 
-            const handleServiceChange = (serviceName) => {
+            // HELPER: Calculate Price
+            const calculatePrice = (serviceName, durationName) => {
+                if (!serviceName) return '';
+                
                 const foundService = servicesList.find(s => s.name === serviceName);
-                let newFormData = { ...formData, service: serviceName };
+                if (!foundService) return '';
+
+                // 1. Try to find exact duration price
+                if (durationName && foundService.prices && foundService.prices[durationName]) {
+                    return foundService.prices[durationName];
+                } 
                 
-                // Logic:
-                // 1. If Duration is already selected, try to find price for that duration in the new service.
-                // 2. If found, set it.
-                // 3. If NOT found (maybe this service doesn't have that duration?), try base price.
-                // 4. If no base price, clear amount.
-                
-                let newPrice = '';
-                
-                if (foundService) {
-                    if (formData.duration && foundService.prices && foundService.prices[formData.duration]) {
-                        newPrice = foundService.prices[formData.duration];
-                    } else if (foundService.price) {
-                        newPrice = foundService.price;
-                    }
+                // 2. Fallback to base price (if any legacy price exists)
+                if (foundService.price) {
+                    return foundService.price;
                 }
+
+                return '';
+            };
+
+            const handleServiceChange = (serviceName) => {
+                // Calculate price based on this NEW service + EXISTING duration
+                const newPrice = calculatePrice(serviceName, formData.duration);
                 
-                newFormData.amount = newPrice;
-                setFormData(newFormData);
+                setFormData({ 
+                    ...formData, 
+                    service: serviceName,
+                    amount: newPrice 
+                });
+            };
+
+            const handleDurationChange = (durationName) => {
+                // Calculate price based on EXISTING service + NEW duration
+                const newPrice = calculatePrice(formData.service, durationName);
+
+                setFormData({ 
+                    ...formData, 
+                    duration: durationName,
+                    amount: newPrice 
+                });
             };
 
             const handleSubmit = async (e) => {
@@ -1339,7 +1347,7 @@
                                         </select>
                                         
                                         {/* Duration Dropdown */}
-                                        <select value={formData.duration} onChange={e=>setFormData({...formData, duration:e.target.value})} className="w-full p-3 border rounded-xl bg-slate-50 appearance-none">
+                                        <select value={formData.duration} onChange={e=>handleDurationChange(e.target.value)} className="w-full p-3 border rounded-xl bg-slate-50 appearance-none">
                                             <option value="" disabled>Select Duration</option>
                                             {durationsList.map(d => <option key={d.id} value={d.name}>{d.name}</option>)}
                                         </select>
