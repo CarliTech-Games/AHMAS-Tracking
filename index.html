@@ -454,13 +454,7 @@
                 const unsubServices = getCollection('services')
                     .onSnapshot((snapshot) => {
                         const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                        
-                        // Seed if empty
-                        if (data.length === 0) {
-                             seedDefaultServices(db, basePath);
-                        } else {
-                            setServicesList(data.sort((a, b) => a.name.localeCompare(b.name)));
-                        }
+                        setServicesList(data.sort((a, b) => a.name.localeCompare(b.name)));
                     }, (error) => console.error("Sync Error: Services", error));
 
                 // Durations
@@ -468,17 +462,12 @@
                     .onSnapshot((snapshot) => {
                         const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                         
-                        // Seed if empty
-                         if (data.length === 0) {
-                             seedDefaultDurations(db, basePath);
-                        } else {
-                            // Sort based on numeric value if possible, else string
-                            setDurationsList(data.sort((a, b) => {
-                                const valA = parseInt(a.name) || 0;
-                                const valB = parseInt(b.name) || 0;
-                                return valA - valB;
-                            }));
-                        }
+                        // Sort based on numeric value if possible, else string
+                        setDurationsList(data.sort((a, b) => {
+                            const valA = parseInt(a.name) || 0;
+                            const valB = parseInt(b.name) || 0;
+                            return valA - valB;
+                        }));
                     }, (error) => console.error("Sync Error: Durations", error));
 
 
@@ -506,28 +495,6 @@
                     return { ...u, pin: hashedPin }; 
                 }));
                 for (const u of usersToSeed) await userColl.add(u);
-            };
-
-            const seedDefaultServices = async (db, basePath) => {
-                 const defaults = [
-                    { name: 'Swedish Massage', price: 400 },
-                    { name: 'Shiatsu Massage', price: 450 },
-                    { name: 'Thai Massage', price: 500 },
-                    { name: 'Combination', price: 450 },
-                    { name: 'Ventosa', price: 600 }
-                ];
-                const col = db.collection(`${basePath}/services`);
-                for (const d of defaults) await col.add(d);
-            };
-
-             const seedDefaultDurations = async (db, basePath) => {
-                 const defaults = [
-                    { name: '60 Mins' },
-                    { name: '90 Mins' },
-                    { name: '120 Mins' }
-                ];
-                const col = db.collection(`${basePath}/durations`);
-                for (const d of defaults) await col.add(d);
             };
 
             useEffect(() => {
