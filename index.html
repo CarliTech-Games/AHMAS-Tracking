@@ -18,12 +18,36 @@
     <!-- 4. Lucide Icons -->
     <script src="https://unpkg.com/lucide@latest"></script>
 
-    <!-- 5. Firebase (Compat Version - Best for local/simple hosting) -->
-    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+    <!-- 5. Firebase (Compat Version - CDN for single-file operation) -->
+    <!-- UPDATED to v12.6.0 CDN -->
+    <script src="https://www.gstatic.com/firebasejs/12.6.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/12.6.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/12.6.0/firebase-firestore-compat.js"></script>
 
-    <!-- 6. Styles -->
+    <!-- 6. Custom Tailwind Config and Styles -->
+    <script>
+        // Custom Tailwind Configuration to use the Logo's Primary Green (#008000)
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'logo-green': {
+                            50: '#E6FFE6',      // Very light background
+                            100: '#CCFFCC',     // Light background
+                            500: '#00B300',     // Medium
+                            600: '#009900',     // Primary Button Hover
+                            700: '#008000',     // Base Logo Green / Primary
+                            800: '#006600',     // Darker text/header
+                            900: '#004C00',     // Deepest text
+                        },
+                        'teal': {
+                            600: '#008080', // Keep some teal accent for contrast
+                        }
+                    }
+                }
+            }
+        }
+    </script>
     <style>
         body { -webkit-tap-highlight-color: transparent; }
         .fade-in { animation: fadeIn 0.3s ease-in-out; }
@@ -31,12 +55,17 @@
         .loader {
             border: 3px solid #f3f3f3;
             border-radius: 50%;
-            border-top: 3px solid #10b981;
+            border-top: 3px solid #008000; /* Use logo-green */
             width: 24px;
             height: 24px;
             animation: spin 1s linear infinite;
         }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        .logo-img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
     </style>
 </head>
 <body class="bg-slate-50 text-slate-800">
@@ -55,6 +84,21 @@
             'Lapu-lapu', 
             'AS Fortuna'
         ];
+        
+        // --- FIREBASE CONFIGURATION (CUSTOMIZABLE FOR EXTERNAL DEPLOYMENT) ---
+        const MANUAL_FIREBASE_CONFIG = {
+            apiKey: "AIzaSyAKXcZwKtFBRFvGbOKd0UnQrLuOLt7wV9M",
+            authDomain: "ahmas-tracker.firebaseapp.com",
+            projectId: "ahmas-tracker",
+            storageBucket: "ahmas-tracker.firebasestorage.app",
+            messagingSenderId: "6650730194",
+            appId: "1:6650730194:web:eedf9c5bcb25cfe12ebf0b",
+            measurementId: "G-XW2GZJXN08"
+        };
+        
+        const firebaseConfig = MANUAL_FIREBASE_CONFIG; 
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+
 
         // --- ICON COMPONENT ---
         const Icon = ({ name, size = 24, className = "", ...props }) => {
@@ -103,8 +147,137 @@
             Cloud: (p) => <Icon name="cloud" {...p} />,
             WifiOff: (p) => <Icon name="wifi-off" {...p} />,
             Trophy: (p) => <Icon name="trophy" {...p} />,
-            MapPin: (p) => <Icon name="map-pin" {...p} />
+            MapPin: (p) => <Icon name="map-pin" {...p} />,
+            Tag: (p) => <Icon name="tag" {...p} />,
+            Hourglass: (p) => <Icon name="hourglass" {...p} />
         };
+
+        // --- SECURITY HELPER: Hashing Function ---
+        const hashPin = async (pin) => {
+            if (!pin || pin.length < 4) return null;
+            try {
+                // Use subtle crypto for SHA-256 hashing
+                const msgUint8 = new TextEncoder().encode(pin);
+                const hashBuffer = await crypto.subtle.digest('SHA-256', msgUint8);
+                const hashArray = Array.from(new Uint8Array(hashBuffer));
+                const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+                return hashHex;
+            } catch (error) {
+                console.error("Hashing failed:", error);
+                return null;
+            }
+        };
+
+
+        // --- List Management Component (Admin Only) ---
+        const ListManagement = ({ therapists, services, durations, onAdd, onDelete }) => {
+            const [activeTab, setActiveTab] = useState('therapist'); // 'therapist' | 'service' | 'duration'
+            const [newItemName, setNewItemName] = useState('');
+            const [newItemPrice, setNewItemPrice] = useState(''); // Only for Services
+            
+            const [modal, setModal] = useState({ isOpen: false, type: 'confirm', title: '', message: '', onConfirm: null, confirmColor: 'red' });
+            const closeModal = () => setModal({ ...modal, isOpen: false });
+            
+            const handleFormSubmit = (e) => {
+                e.preventDefault();
+                // Pass extra data (price) if it's a service
+                onAdd(activeTab, newItemName, activeTab === 'service' ? newItemPrice : null);
+                setNewItemName('');
+                setNewItemPrice('');
+            };
+            
+            let currentList = [];
+            let placeholderText = "";
+            let icon = null;
+
+            if (activeTab === 'therapist') {
+                currentList = therapists;
+                placeholderText = "Enter Therapist Name";
+                icon = <Icons.Users size={18} />;
+            } else if (activeTab === 'service') {
+                currentList = services;
+                placeholderText = "Enter Service Name";
+                icon = <Icons.Tag size={18} />;
+            } else {
+                currentList = durations;
+                placeholderText = "Enter Duration (e.g. 60 Mins)";
+                icon = <Icons.Hourglass size={18} />;
+            }
+
+            return (
+                <div className="space-y-6 fade-in">
+                    <h2 className="text-lg font-bold text-logo-green-800 flex gap-2 items-center"><Icons.ShieldCheck size={18} className="text-logo-green-700"/> Master Data Lists</h2>
+                    
+                    {/* Tabs */}
+                    <div className="flex bg-slate-100 p-1 rounded-lg">
+                        <button onClick={() => setActiveTab('therapist')} className={`flex-1 py-2 text-xs font-bold rounded-md flex items-center justify-center gap-1 ${activeTab==='therapist' ? 'bg-white shadow-sm text-logo-green-700' : 'text-slate-500'}`}>
+                            <Icons.Users size={14}/> Therapists
+                        </button>
+                        <button onClick={() => setActiveTab('service')} className={`flex-1 py-2 text-xs font-bold rounded-md flex items-center justify-center gap-1 ${activeTab==='service' ? 'bg-white shadow-sm text-logo-green-700' : 'text-slate-500'}`}>
+                            <Icons.Sparkles size={14}/> Services
+                        </button>
+                        <button onClick={() => setActiveTab('duration')} className={`flex-1 py-2 text-xs font-bold rounded-md flex items-center justify-center gap-1 ${activeTab==='duration' ? 'bg-white shadow-sm text-logo-green-700' : 'text-slate-500'}`}>
+                            <Icons.Clock size={14}/> Minutes
+                        </button>
+                    </div>
+
+                    {/* Add New Item */}
+                    <div className="bg-white rounded-xl shadow-sm border border-logo-green-100 p-6">
+                        <h3 className="font-bold mb-4 flex items-center gap-2 text-sm uppercase tracking-wide text-slate-500"><Icons.Plus size={16}/> Add New {activeTab.charAt(0).toUpperCase() + activeTab.slice(1)}</h3>
+                        <form onSubmit={handleFormSubmit} className="flex flex-col gap-3">
+                            <div className="flex gap-2">
+                                <input 
+                                    required 
+                                    placeholder={placeholderText} 
+                                    value={newItemName} 
+                                    onChange={e => setNewItemName(e.target.value)} 
+                                    className="flex-1 p-3 border rounded-lg bg-slate-50 focus:ring-2 focus:ring-logo-green-500 outline-none"
+                                />
+                                {activeTab === 'service' && (
+                                    <input 
+                                        required 
+                                        type="number"
+                                        placeholder="Price" 
+                                        value={newItemPrice} 
+                                        onChange={e => setNewItemPrice(e.target.value)} 
+                                        className="w-24 p-3 border rounded-lg bg-slate-50 focus:ring-2 focus:ring-logo-green-500 outline-none"
+                                    />
+                                )}
+                            </div>
+                            <button type="submit" className="w-full bg-logo-green-600 text-white p-3 rounded-lg font-bold hover:bg-logo-green-700 transition shadow-sm">Add to List</button>
+                        </form>
+                    </div>
+
+                    {/* Current List */}
+                    <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
+                        <div className="p-4 bg-logo-green-50 font-bold text-logo-green-800 text-sm border-b border-logo-green-100 flex justify-between items-center">
+                            <span>Current {activeTab === 'duration' ? 'Durations' : activeTab + 's'} ({currentList.length})</span>
+                            {icon}
+                        </div>
+                        
+                        <div className="max-h-[400px] overflow-y-auto">
+                            {currentList.length === 0 ? (
+                                <p className="text-center text-slate-400 p-6 italic">No items found.</p>
+                            ) : (
+                                currentList.map(item => (
+                                    <div key={item.id} className="p-4 border-b flex justify-between items-center last:border-b-0 hover:bg-slate-50">
+                                        <div className="flex flex-col">
+                                            <span className="text-slate-700 font-medium">{item.name}</span>
+                                            {item.price && <span className="text-xs text-logo-green-600 font-bold">Default: P{item.price}</span>}
+                                        </div>
+                                        <button type="button" onClick={() => onDelete(activeTab, item.id, item.name)} className="text-slate-300 hover:text-red-500 p-2 rounded hover:bg-red-50 transition">
+                                            <Icons.Trash2 size={16}/>
+                                        </button>
+                                    </div>
+                                ))
+                            )}
+                        </div>
+                    </div>
+                      {modal.isOpen && <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60"><div className="bg-white rounded-xl p-6 max-w-sm"><h3 className="font-bold mb-2">{modal.title}</h3><p className="mb-4 text-sm">{modal.message}</p><div className="flex gap-2 justify-end">{modal.type==='confirm'&&<button onClick={closeModal} className="px-4 py-2 text-slate-500">Cancel</button>}<button onClick={modal.onConfirm||closeModal} className={`px-4 py-2 rounded text-white ${modal.confirmColor==='red'?'bg-red-500':'bg-logo-green-600'}`}>Okay</button></div></div></div>}
+                </div>
+            );
+        };
+
 
         // --- MAIN APP ---
         const App = () => {
@@ -119,8 +292,20 @@
             const [transactions, setTransactions] = useState([]);
             const [history, setHistory] = useState([]);
             
+            // Master Lists
+            const [therapistsList, setTherapistsList] = useState([]);
+            const [servicesList, setServicesList] = useState([]);
+            const [durationsList, setDurationsList] = useState([]);
+            
             const [view, setView] = useState('dashboard');
             const [expandedHistoryId, setExpandedHistoryId] = useState(null);
+            
+            // Staff Accountability State
+            const [showMyShift, setShowMyShift] = useState(false);
+
+            // History Filtering State
+            const [historyStartDate, setHistoryStartDate] = useState('');
+            const [historyEndDate, setHistoryEndDate] = useState('');
             
             // Forms
             const [loginUsername, setLoginUsername] = useState('');
@@ -129,44 +314,46 @@
             
             const [newUser, setNewUser] = useState({ name: '', username: '', pin: '', role: 'staff' });
             const [profileData, setProfileData] = useState({ username: '', pin: '' });
+            
             const [formData, setFormData] = useState({
-                clientName: '', service: '', therapist: '', amount: '', type: 'booking', time: new Date().toTimeString().slice(0, 5)
+                clientName: '', 
+                service: '', 
+                therapist: '', 
+                amount: '', 
+                duration: '', // Added Duration
+                type: 'booking', 
+                time: new Date().toTimeString().slice(0, 5),
+                targetBranch: ''
             });
             const [modal, setModal] = useState({
                 isOpen: false, type: 'confirm', title: '', message: '', onConfirm: null, confirmColor: 'red'
             });
 
+            const [editUserModal, setEditUserModal] = useState({ isOpen: false, user: null, newPin: '' });
+
+            const closeModal = () => setModal({ ...modal, isOpen: false });
+            const closeEditUserModal = () => setEditUserModal({ isOpen: false, user: null, newPin: '' });
+
+
             // --- 1. INITIALIZE FIREBASE ---
             useEffect(() => {
                 const initFirebase = async () => {
+                    if (!firebaseConfig || !firebaseConfig.projectId) {
+                        setConfigError("Firebase configuration is incomplete. Please check the firebaseConfig object.");
+                        return;
+                    }
+                    
                     try {
-                        // ==========================================================================================
-                        // YOUR FIREBASE KEYS ARE HERE (DO NOT EDIT)
-                        // ==========================================================================================
-                        const manualConfig = {
-                          apiKey: "AIzaSyAKXcZwKtFBRFvGbOKd0UnQrLuOLt7wV9M",
-                          authDomain: "ahmas-tracker.firebaseapp.com",
-                          projectId: "ahmas-tracker",
-                          storageBucket: "ahmas-tracker.firebasestorage.app",
-                          messagingSenderId: "6650730194",
-                          appId: "1:6650730194:web:eedf9c5bcb25cfe12ebf0b",
-                          measurementId: "G-XW2GZJXN08"
-                        };
-
-                        const firebaseConfig = manualConfig;
-
-                        // Initialize using Compat syntax (window.firebase)
                         if (!firebase.apps.length) {
                             firebase.initializeApp(firebaseConfig);
                         }
+                        
                         const auth = firebase.auth();
                         const db = firebase.firestore();
-                        
-                        const appId = firebaseConfig.projectId || 'default-app-id';
+                        const currentAppId = firebaseConfig.projectId || 'default-app-id';
 
-                        // Auth Flow: Prefer custom token from env, else anonymous
-                        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                            await auth.signInWithCustomToken(__initial_auth_token);
+                        if (initialAuthToken) {
+                            await auth.signInWithCustomToken(initialAuthToken);
                         } else {
                             await auth.signInAnonymously();
                         }
@@ -174,13 +361,12 @@
                         auth.onAuthStateChanged((u) => {
                             if (u) {
                                 setFbUser(u);
-                                setFb({ db, auth, appId });
+                                setFb({ db, auth, appId: currentAppId });
                             }
                         });
                     } catch (error) { 
                         console.error("FB Init Error:", error); 
                         
-                        // BETTER ERROR HANDLING
                         let msg = error.message || "Unknown connection error";
                         
                         if (error.code === 'auth/operation-not-allowed') {
@@ -204,93 +390,184 @@
             }, []);
 
             // --- 2. DATA SYNC ---
+            
             useEffect(() => {
                 if (!fb || !fbUser) return;
                 const { db, appId } = fb;
                 const basePath = `artifacts/${appId}/public/data`;
+                
+                const getCollection = (name) => db.collection(`${basePath}/${name}`);
 
                 // Transactions
-                const unsubTrans = db.collection(`${basePath}/transactions`)
+                const unsubTrans = getCollection('transactions')
                     .onSnapshot((snapshot) => {
                         const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                         data.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
                         setTransactions(data);
                         setDbReady(true);
-                    }, (error) => console.error("Sync Error:", error));
+                    }, (error) => console.error("Sync Error: Transactions", error));
 
                 // History
-                const unsubHistory = db.collection(`${basePath}/history`)
+                const unsubHistory = getCollection('history')
                     .onSnapshot((snapshot) => {
                         const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                         data.sort((a, b) => (b.timestamp_val || 0) - (a.timestamp_val || 0));
                         setHistory(data);
-                    });
+                    }, (error) => console.error("Sync Error: History", error));
 
                 // Users
-                const unsubUsers = db.collection(`${basePath}/users`)
-                    .onSnapshot((snapshot) => {
+                const unsubUsers = getCollection('users')
+                    .onSnapshot(async (snapshot) => {
                         const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                        // =======================================================================================================
-                        // FIX: Attempt to seed default users even if Security Rules are strict (to guarantee basic app functionality)
-                        // =======================================================================================================
+                        const userColl = getCollection('users');
+                        
                         if (data.length === 0) {
-                            seedDefaultUsers(db, basePath, data.length);
-                        } else {
+                            seedDefaultUsers(db, basePath);
+                            return; 
+                        }
+
+                        // Check hash updates
+                        const needsUpdate = data.filter(u => u.username === 'admin' || u.username === 'morning' || u.username === 'night');
+                        let shouldWait = false;
+                        for (const u of needsUpdate) {
+                            if (u.pin === '8888' || u.pin === '1111' || u.pin === '2222') {
+                                const hashedPin = await hashPin(u.pin);
+                                await userColl.doc(u.id).update({ pin: hashedPin });
+                                shouldWait = true;
+                            }
+                        }
+                        
+                        if (!shouldWait) {
                             setUsers(data);
                         }
-                    }, (error) => {
-                        console.error("User Sync Error - attempting seed:", error);
-                        // If the read fails (e.g., rules prevent reading users), we need a fallback to seed locally/attempt seed
-                        seedDefaultUsers(db, basePath, users.length);
-                    });
 
-                return () => { unsubTrans(); unsubHistory(); unsubUsers(); };
+                    }, (error) => console.error("Sync Error: Users", error));
+
+                // Therapists
+                const unsubTherapists = getCollection('therapists')
+                    .onSnapshot((snapshot) => {
+                        const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                        setTherapistsList(data.sort((a, b) => a.name.localeCompare(b.name)));
+                    }, (error) => console.error("Sync Error: Therapists", error));
+
+                // Services
+                const unsubServices = getCollection('services')
+                    .onSnapshot((snapshot) => {
+                        const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                        
+                        // Seed if empty
+                        if (data.length === 0) {
+                             seedDefaultServices(db, basePath);
+                        } else {
+                            setServicesList(data.sort((a, b) => a.name.localeCompare(b.name)));
+                        }
+                    }, (error) => console.error("Sync Error: Services", error));
+
+                // Durations
+                const unsubDurations = getCollection('durations')
+                    .onSnapshot((snapshot) => {
+                        const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                        
+                        // Seed if empty
+                         if (data.length === 0) {
+                             seedDefaultDurations(db, basePath);
+                        } else {
+                            // Sort based on numeric value if possible, else string
+                            setDurationsList(data.sort((a, b) => {
+                                const valA = parseInt(a.name) || 0;
+                                const valB = parseInt(b.name) || 0;
+                                return valA - valB;
+                            }));
+                        }
+                    }, (error) => console.error("Sync Error: Durations", error));
+
+
+                return () => { 
+                    unsubTrans(); 
+                    unsubHistory(); 
+                    unsubUsers(); 
+                    unsubTherapists(); 
+                    unsubServices();
+                    unsubDurations();
+                };
             }, [fb, fbUser]);
 
             // --- 3. HELPERS ---
             
-            const seedDefaultUsers = async (db, basePath, currentCount) => {
-                // If currentCount > 0, the data read was successful, so we skip seeding
-                if (currentCount > 0) return;
-
+            const seedDefaultUsers = async (db, basePath) => {
                 const defaults = [
                     { name: 'Owner Admin', username: 'admin', pin: '8888', role: 'admin' },
                     { name: 'Morning Rec.', username: 'morning', pin: '1111', role: 'staff' },
                     { name: 'Night Rec.', username: 'night', pin: '2222', role: 'staff' }
                 ];
                 const userColl = db.collection(`${basePath}/users`);
-                
-                // Use a standard non-transactional write here. This write might fail if rules are strict.
-                // However, the first successful login after publishing the lax rules will trigger this and fix the app.
-                try {
-                    const snapshot = await userColl.get();
-                    if (snapshot.empty) {
-                        for (const u of defaults) {
-                            await userColl.add(u);
-                        }
-                        // After successful write, force a reload of users
-                        userColl.get().then(s => setUsers(s.docs.map(doc => ({ id: doc.id, ...doc.data() }))));
-                    }
-                } catch (e) {
-                    // This error is expected if the rules are strict. We rely on the user to fix the rules.
-                    console.log("Could not seed users due to strict rules. Please fix Firestore Rules.");
-                }
+                const usersToSeed = await Promise.all(defaults.map(async u => {
+                    const hashedPin = await hashPin(u.pin);
+                    return { ...u, pin: hashedPin }; 
+                }));
+                for (const u of usersToSeed) await userColl.add(u);
+            };
+
+            const seedDefaultServices = async (db, basePath) => {
+                 const defaults = [
+                    { name: 'Swedish Massage', price: 400 },
+                    { name: 'Shiatsu Massage', price: 450 },
+                    { name: 'Thai Massage', price: 500 },
+                    { name: 'Combination', price: 450 },
+                    { name: 'Ventosa', price: 600 }
+                ];
+                const col = db.collection(`${basePath}/services`);
+                for (const d of defaults) await col.add(d);
+            };
+
+             const seedDefaultDurations = async (db, basePath) => {
+                 const defaults = [
+                    { name: '60 Mins' },
+                    { name: '90 Mins' },
+                    { name: '120 Mins' }
+                ];
+                const col = db.collection(`${basePath}/durations`);
+                for (const d of defaults) await col.add(d);
             };
 
             useEffect(() => {
                 if (view === 'profile' && user) {
                     const freshUser = users.find(u => u.id === user.id) || user;
-                    setProfileData({ username: freshUser.username, pin: freshUser.pin });
+                    setProfileData({ username: freshUser.username, pin: '' }); 
                 }
             }, [view, user, users]);
 
-            const formatCurrency = (val) => new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(val);
+            // Update form data's targetBranch when user or branch changes
+            useEffect(() => {
+                if (user && formData.targetBranch === '' && user.currentBranch !== 'ALL') {
+                    setFormData(prev => ({ ...prev, targetBranch: user.currentBranch }));
+                }
+            }, [user]);
 
-            // Filter Transactions by Branch
+            const formatCurrency = (val) => new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(val);
+            
+            const formatDate = (timestamp) => {
+                if (!timestamp) return 'N/A';
+                const date = new Date(timestamp);
+                return date.toLocaleDateString();
+            };
+            
+            // Filter Transactions by Branch AND My Shift Toggle
             const getFilteredData = () => {
                 if (!user) return [];
-                if (user.currentBranch === 'ALL') return transactions;
-                return transactions.filter(t => t.branch === user.currentBranch);
+                let data = transactions;
+
+                // 1. Filter by Branch (if not ALL)
+                if (user.currentBranch !== 'ALL') {
+                    data = data.filter(t => t.branch === user.currentBranch);
+                }
+
+                // 2. Filter by User (if My Shift is toggled AND user is staff)
+                if (showMyShift && user.role !== 'admin') {
+                    data = data.filter(t => t.recordedBy === user.name);
+                }
+                
+                return data;
             };
 
             const filteredTransactions = getFilteredData();
@@ -328,11 +605,40 @@
                 
                 return result;
             }, [filteredTransactions, user]);
+            
+            // Filtered History Logic (for Admin view)
+            const filteredHistory = useMemo(() => {
+                let data = history;
+
+                if (historyStartDate) {
+                    const startTimestamp = new Date(historyStartDate).getTime();
+                    data = data.filter(h => (h.timestamp_val || 0) >= startTimestamp);
+                }
+
+                if (historyEndDate) {
+                    const endTimestamp = new Date(historyEndDate);
+                    endTimestamp.setDate(endTimestamp.getDate() + 1); 
+                    const endTimestampVal = endTimestamp.getTime();
+                    data = data.filter(h => (h.timestamp_val || 0) < endTimestampVal);
+                }
+
+                return data;
+            }, [history, historyStartDate, historyEndDate]);
+
 
             const downloadCSV = (record) => {
-                const headers = ['Date', 'Branch', 'Time', 'Client Name', 'Service', 'Therapist', 'Amount', 'Status', 'Recorded By'];
+                const headers = ['Date', 'Branch', 'Time', 'Client Name', 'Service', 'Duration', 'Therapist', 'Amount', 'Status', 'Recorded By'];
                 const rows = record.transactions.map(t => [
-                    `"${record.date}"`, `"${t.branch || 'N/A'}"`, `"${t.time}"`, `"${t.clientName}"`, `"${t.service}"`, `"${t.therapist}"`, t.amount, t.status, `"${t.recordedBy || 'System'}"`
+                    `"${record.date}"`, 
+                    `"${t.branch || 'N/A'}"`, 
+                    `"${t.time}"`, 
+                    `"${t.clientName}"`, 
+                    `"${t.service}"`,
+                    `"${t.duration || ''}"`, // Added Duration to CSV 
+                    `"${t.therapist}"`, 
+                    t.amount, 
+                    t.status, 
+                    `"${t.recordedBy || 'System'}"`
                 ]);
                 const csvContent = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
                 const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -342,18 +648,88 @@
                 link.click();
             };
 
-            const closeModal = () => setModal({ ...modal, isOpen: false });
 
             // --- 4. ACTIONS ---
 
-            const handleLoginSubmit = (e) => {
+            // List Management Handlers
+            const handleAddItem = async (listType, itemName, itemPrice = null) => {
+                if (!itemName) return;
+
+                const basePath = `artifacts/${fb.appId}/public/data`;
+                let collectionName = '';
+                let data = { name: itemName.trim() };
+                let checkList = [];
+
+                if (listType === 'therapist') {
+                    collectionName = 'therapists';
+                    checkList = therapistsList;
+                } else if (listType === 'service') {
+                    collectionName = 'services';
+                    checkList = servicesList;
+                    if (itemPrice) data.price = parseFloat(itemPrice);
+                } else if (listType === 'duration') {
+                    collectionName = 'durations';
+                    checkList = durationsList;
+                } else {
+                    return;
+                }
+                
+                if (checkList.some(item => item.name.toLowerCase() === itemName.trim().toLowerCase())) {
+                    setModal({ isOpen: true, type: 'alert', title: 'Duplicate Item', message: `${itemName} already exists in ${listType}s.`, onConfirm: closeModal, confirmColor: 'red' });
+                    return;
+                }
+
+                await fb.db.collection(`${basePath}/${collectionName}`).add(data);
+            };
+
+            const handleDeleteItem = (listType, id, name) => {
+                let collectionName = '';
+                if (listType === 'therapist') collectionName = 'therapists';
+                else if (listType === 'service') collectionName = 'services';
+                else if (listType === 'duration') collectionName = 'durations';
+                else return;
+
+                const basePath = `artifacts/${fb.appId}/public/data`;
+                
+                setModal({
+                    isOpen: true, type: 'confirm', title: `Delete ${listType}?`, message: `Are you sure you want to permanently delete "${name}"?`, confirmColor: 'red',
+                    onConfirm: async () => {
+                        await fb.db.collection(`${basePath}/${collectionName}`).doc(id).delete();
+                        closeModal();
+                    }
+                });
+            };
+
+            // History Deletion Handler (Admin Only)
+            const handleDeleteHistory = (id, date) => {
+                if (user?.role !== 'admin') return;
+
+                 setModal({
+                    isOpen: true, type: 'confirm', title: `Delete Report?`, message: `Are you sure you want to permanently delete the archived report for ${date}? This action cannot be undone.`, confirmColor: 'red',
+                    onConfirm: async () => {
+                        const basePath = `artifacts/${fb.appId}/public/data`;
+                        await fb.db.collection(`${basePath}/history`).doc(id).delete();
+                        closeModal();
+                    }
+                });
+            };
+            
+
+            const handleLoginSubmit = async (e) => {
                 e.preventDefault();
                 if (!loginBranch) {
                     setModal({ isOpen: true, type: 'alert', title: 'Branch Required', message: 'Please select your branch location.', onConfirm: closeModal, confirmColor: 'red' });
                     return;
                 }
+                
+                const hashedPinAttempt = await hashPin(loginPin);
+                if (!hashedPinAttempt) {
+                    setModal({ isOpen: true, type: 'alert', title: 'Login Error', message: 'PIN must be at least 4 digits.', onConfirm: closeModal, confirmColor: 'red' });
+                    return;
+                }
 
-                const found = users.find(u => u.username.toLowerCase() === loginUsername.toLowerCase() && u.pin === loginPin);
+                const found = users.find(u => u.username.toLowerCase() === loginUsername.toLowerCase() && u.pin === hashedPinAttempt);
+                
                 if (found) {
                     setUser({ ...found, currentBranch: loginBranch });
                     setLoginUsername(''); setLoginPin(''); setLoginBranch(''); setView('dashboard');
@@ -362,22 +738,58 @@
                 }
             };
 
+            const handleServiceChange = (serviceName) => {
+                // Find selected service in list
+                const foundService = servicesList.find(s => s.name === serviceName);
+                let newFormData = { ...formData, service: serviceName };
+                
+                // Auto-populate price if found and not manually set yet (or override logic)
+                // Here we just set it. User can override.
+                if (foundService && foundService.price) {
+                    newFormData.amount = foundService.price;
+                }
+                setFormData(newFormData);
+            };
+
             const handleSubmit = async (e) => {
                 e.preventDefault();
-                if (!formData.clientName || !formData.amount) return;
+                const transactionBranch = user.currentBranch === 'ALL' ? formData.targetBranch : user.currentBranch;
+
+                if (!formData.clientName || !formData.amount || !formData.service || !formData.therapist) {
+                    setModal({ isOpen: true, type: 'alert', title: 'Missing Information', message: 'Please ensure Client Name, Service, Therapist, and Price are all entered.', onConfirm: closeModal, confirmColor: 'red' });
+                    return;
+                }
                 
+                if (user.currentBranch === 'ALL' && !formData.targetBranch) {
+                    setModal({ isOpen: true, type: 'alert', title: 'Missing Branch', message: 'Please select a Target Branch for this booking.', onConfirm: closeModal, confirmColor: 'red' });
+                    return;
+                }
+
                 const basePath = `artifacts/${fb.appId}/public/data`;
                 await fb.db.collection(`${basePath}/transactions`).add({
                     ...formData,
                     amount: parseFloat(formData.amount),
                     status: formData.type === 'sale' ? 'completed' : 'pending',
-                    date: new Date().toLocaleDateString(),
                     recordedBy: user.name,
-                    branch: user.currentBranch, 
+                    branch: transactionBranch, 
                     timestamp: Date.now()
                 });
 
-                setFormData({ clientName: '', service: '', therapist: '', amount: '', type: 'booking', time: new Date().toTimeString().slice(0, 5) });
+                const resetTargetBranch = user.currentBranch === 'ALL' ? transactionBranch : user.currentBranch;
+                
+                setFormData({ 
+                    clientName: '', 
+                    service: '', 
+                    duration: '',
+                    therapist: '', 
+                    amount: '', 
+                    type: 'booking', 
+                    time: new Date().toTimeString().slice(0, 5),
+                    targetBranch: resetTargetBranch
+                });
+                
+                setModal({ isOpen: true, type: 'alert', title: 'Booking Saved!', message: `${formData.clientName} recorded for ${transactionBranch}.`, onConfirm: closeModal, confirmColor: 'logo-green' });
+
                 setView('dashboard');
             };
 
@@ -403,14 +815,17 @@
             };
 
             const requestEndDay = () => {
-                if (user?.role !== 'admin') return;
+                if (user?.role !== 'admin') {
+                    setModal({ isOpen: true, type: 'alert', title: 'Access Denied', message: 'Only Admin can close the day.', onConfirm: closeModal, confirmColor: 'red' });
+                    return;
+                }
                 if (filteredTransactions.length === 0) {
-                    setModal({ isOpen: true, type: 'alert', title: 'No Data', message: 'Nothing to save for this branch.', onConfirm: closeModal, confirmColor: 'emerald' });
+                    setModal({ isOpen: true, type: 'alert', title: 'No Data', message: 'Nothing to save for this branch.', onConfirm: closeModal, confirmColor: 'logo-green' });
                     return;
                 }
 
                 setModal({
-                    isOpen: true, type: 'confirm', title: 'End Day & Sync?', message: `Save ${user.currentBranch} report to history and clear board?`, confirmColor: 'emerald',
+                    isOpen: true, type: 'confirm', title: 'End Day & Sync?', message: `Save ${user.currentBranch} report to history and clear board?`, confirmColor: 'logo-green',
                     onConfirm: async () => {
                         const basePath = `artifacts/${fb.appId}/public/data`;
                         const historyColl = fb.db.collection(`${basePath}/history`);
@@ -439,29 +854,150 @@
             const handleAddUser = async (e) => {
                 e.preventDefault();
                 if (!newUser.name || !newUser.username || !newUser.pin) return;
-                if (users.some(u => u.username.toLowerCase() === newUser.username.toLowerCase())) { alert("Username taken"); return; }
+                
+                const hashedPin = await hashPin(newUser.pin);
+                if (!hashedPin) {
+                    setModal({ isOpen: true, type: 'alert', title: 'Error', message: 'PIN hashing failed. Check PIN length.', onConfirm: closeModal, confirmColor: 'red' });
+                    return;
+                }
+
+                if (users.some(u => u.username.toLowerCase() === newUser.username.toLowerCase())) { 
+                    setModal({ isOpen: true, type: 'alert', title: 'Username Taken', message: 'This username is already in use.', onConfirm: closeModal, confirmColor: 'red' });
+                    return; 
+                }
+                
                 const basePath = `artifacts/${fb.appId}/public/data`;
-                await fb.db.collection(`${basePath}/users`).add(newUser);
+                await fb.db.collection(`${basePath}/users`).add({ ...newUser, pin: hashedPin });
                 setNewUser({ name: '', username: '', pin: '', role: 'staff' });
             };
+
             const handleDeleteUser = (id) => {
-                if (users.length <= 1) { alert("Cannot delete last user"); return; }
-                setModal({ isOpen: true, type: 'confirm', title: 'Remove Staff?', message: 'Revoke access?', confirmColor: 'red', onConfirm: async () => { 
+                if (users.length <= 1) { 
+                    setModal({ isOpen: true, type: 'alert', title: 'Action Denied', message: 'Cannot delete the last remaining user.', onConfirm: closeModal, confirmColor: 'red' });
+                    return; 
+                }
+                setModal({ isOpen: true, type: 'confirm', title: 'Remove Staff?', message: 'Revoke access for this user?', confirmColor: 'red', onConfirm: async () => { 
                     const basePath = `artifacts/${fb.appId}/public/data`;
                     await fb.db.collection(`${basePath}/users`).doc(id).delete(); 
                     closeModal(); 
                 }});
             };
+
             const handleUpdateProfile = async (e) => {
                 e.preventDefault();
-                if (users.some(u => u.username.toLowerCase() === profileData.username.toLowerCase() && u.id !== user.id)) { alert("Username taken"); return; }
+                
+                const newPin = profileData.pin;
+                const updateData = { username: profileData.username };
+
+                if (newPin && newPin.length > 0) {
+                    const hashedPin = await hashPin(newPin);
+                      if (!hashedPin) {
+                        setModal({ isOpen: true, type: 'alert', title: 'Error', message: 'New PIN hashing failed. Check PIN length.', onConfirm: closeModal, confirmColor: 'red' });
+                        return;
+                    }
+                    updateData.pin = hashedPin;
+                }
+
+                if (users.some(u => u.username.toLowerCase() === profileData.username.toLowerCase() && u.id !== user.id)) { 
+                    setModal({ isOpen: true, type: 'alert', title: 'Username Taken', message: 'This username is already in use by another staff.', onConfirm: closeModal, confirmColor: 'red' });
+                    return; 
+                }
+                
                 const basePath = `artifacts/${fb.appId}/public/data`;
-                await fb.db.collection(`${basePath}/users`).doc(user.id).update(profileData);
-                setUser({ ...user, ...profileData });
-                setModal({ isOpen: true, type: 'alert', title: 'Updated', message: 'Credentials synced.', onConfirm: closeModal, confirmColor: 'emerald' });
+                await fb.db.collection(`${basePath}/users`).doc(user.id).update(updateData);
+                
+                const updatedUser = { ...user, ...updateData };
+                setUser(updatedUser);
+                setModal({ isOpen: true, type: 'alert', title: 'Updated', message: 'Credentials synced.', onConfirm: closeModal, confirmColor: 'logo-green' });
+            };
+            
+            const handleResetPin = async (e) => {
+                e.preventDefault();
+                const targetUser = editUserModal.user;
+                const newPin = editUserModal.newPin;
+
+                if (newPin.length < 4) {
+                    setModal({ isOpen: true, type: 'alert', title: 'PIN Error', message: 'New PIN must be at least 4 digits.', onConfirm: closeModal, confirmColor: 'red' });
+                    return;
+                }
+                
+                const hashedPin = await hashPin(newPin);
+                if (!hashedPin) {
+                    setModal({ isOpen: true, type: 'alert', title: 'Error', message: 'PIN hashing failed.', onConfirm: closeModal, confirmColor: 'red' });
+                    return;
+                }
+
+                try {
+                    const basePath = `artifacts/${fb.appId}/public/data`;
+                    await fb.db.collection(`${basePath}/users`).doc(targetUser.id).update({ pin: hashedPin });
+                    
+                    setModal({ isOpen: true, type: 'alert', title: 'Success', message: `${targetUser.name}'s PIN has been reset.`, onConfirm: () => {
+                        setEditUserModal({ isOpen: false, user: null, newPin: '' });
+                        closeModal();
+                    }, confirmColor: 'logo-green' });
+                } catch (error) {
+                    setModal({ isOpen: true, type: 'alert', title: 'Error', message: 'Failed to update PIN: ' + error.message, onConfirm: closeModal, confirmColor: 'red' });
+                }
             };
 
             // --- RENDER ---
+
+            // Admin Reset User Modal Component (Inner Component)
+            const AdminResetUserModal = ({ editUserModal, setEditUserModal, handleResetPin }) => {
+                if (!editUserModal.isOpen || !editUserModal.user) return null;
+
+                const user = editUserModal.user;
+                
+                return (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 fade-in">
+                        <div className="bg-white rounded-xl p-6 w-full max-w-sm">
+                            <h3 className="text-xl font-bold text-logo-green-800 mb-4 flex items-center gap-2">
+                                <Icons.UserCog size={24}/> Reset Staff Credentials
+                            </h3>
+
+                            <div className="bg-slate-50 p-4 rounded-lg mb-4">
+                                <p className="text-xs text-slate-500 uppercase font-bold">Staff Name:</p>
+                                <p className="font-bold text-slate-800 text-lg mb-2">{user.name}</p>
+
+                                <p className="text-xs text-slate-500 uppercase font-bold">Username:</p>
+                                <p className="font-mono text-logo-green-700 text-sm">@{user.username}</p>
+                            </div>
+
+                            <form onSubmit={handleResetPin} className="space-y-4">
+                                <label className="block">
+                                    <span className="text-sm font-semibold text-slate-700 block mb-1">Set New PIN (4+ Digits)</span>
+                                    <input
+                                        required
+                                        type="password"
+                                        inputMode="numeric"
+                                        maxLength="4"
+                                        value={editUserModal.newPin}
+                                        onChange={(e) => setEditUserModal({ ...editUserModal, newPin: e.target.value })}
+                                        placeholder="Enter new 4-digit PIN"
+                                        className="w-full p-3 border rounded-lg font-mono focus:ring-2 focus:ring-logo-green-500"
+                                    />
+                                </label>
+
+                                <div className="flex justify-end gap-2 pt-2">
+                                    <button 
+                                        type="button"
+                                        onClick={closeEditUserModal} 
+                                        className="px-4 py-2 text-slate-500 rounded hover:bg-slate-100"
+                                    >
+                                        Cancel
+                                    </button>
+                                    <button 
+                                        type="submit" 
+                                        className="px-4 py-2 rounded text-white bg-logo-green-600 hover:bg-logo-green-700 font-bold"
+                                    >
+                                        Reset PIN
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                );
+            };
 
             if (configError) return (
                 <div className="min-h-screen flex flex-col items-center justify-center bg-slate-100 text-center p-4">
@@ -475,7 +1011,6 @@
                                 <li>Did you create the Firestore Database?</li>
                                 <li>Did you enable Anonymous Authentication?</li>
                                 <li>Did you add the Vercel domain to Authorized Domains?</li>
-                                <li>**If data keeps resetting:** Your Security Rules are blocking writes. You must paste the `allow read, write: if true;` code into the Rules tab.</li>
                             </ol>
                         </p>
                     </div>
@@ -488,29 +1023,32 @@
             if (!user) {
                 return (
                     <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-6 fade-in">
-                        <div className="bg-white p-8 rounded-2xl shadow-xl w-full max-w-sm border border-emerald-100 text-center relative overflow-hidden">
-                            <div className="absolute top-0 left-0 w-full h-1.5 bg-gradient-to-r from-emerald-400 to-teal-600"></div>
-                            <div className="w-20 h-20 bg-emerald-50 rounded-full flex items-center justify-center mx-auto mb-6 shadow-sm border border-emerald-100"><Icons.Lock size={32} className="text-emerald-600" /></div>
-                            <h1 className="text-2xl font-bold text-emerald-900 mb-1">At HOME Massage & Spa</h1>
+                        <div className="bg-white p-8 rounded-2xl shadow-xl w-full max-w-sm border border-logo-green-100 text-center relative overflow-hidden">
+                            <div className="absolute top-0 left-0 w-full h-1.5 bg-gradient-to-r from-logo-green-700 to-teal-600"></div>
+                            <div className="w-20 h-20 bg-logo-green-50 rounded-full flex items-center justify-center mx-auto mb-6 shadow-sm border border-logo-green-100">
+                                {/* Logo replaced with icon */}
+                                <Icons.Lock size={32} className="text-logo-green-700" />
+                            </div>
+                            <h1 className="text-2xl font-bold text-logo-green-900 mb-1">At HOME Massage & Spa</h1>
                             <p className="text-slate-500 mb-6 text-sm">Staff Portal</p>
                             
                             <form onSubmit={handleLoginSubmit} className="space-y-4">
                                 <div className="relative">
                                     <Icons.MapPin size={18} className="absolute left-3 top-3.5 text-slate-400" />
-                                    <select required value={loginBranch} onChange={(e)=>setLoginBranch(e.target.value)} className="w-full pl-10 pr-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-slate-50 focus:bg-white appearance-none text-slate-600">
+                                    <select required value={loginBranch} onChange={(e)=>setLoginBranch(e.target.value)} className="w-full pl-10 pr-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-logo-green-700 bg-slate-50 focus:bg-white appearance-none text-slate-600">
                                         <option value="" disabled>Select Branch Location</option>
                                         {BRANCHES.map(b => <option key={b} value={b}>{b}</option>)}
-                                        <option value="ALL" className="font-bold text-emerald-600">ALL BRANCHES (Owner View)</option>
+                                        <option value="ALL" className="font-bold text-logo-green-700">ALL BRANCHES (Owner View)</option>
                                     </select>
                                     <Icons.ChevronDown size={16} className="absolute right-3 top-4 text-slate-400 pointer-events-none"/>
                                 </div>
-                                <div className="relative"><Icons.User size={18} className="absolute left-3 top-3.5 text-slate-400" /><input required value={loginUsername} onChange={(e)=>setLoginUsername(e.target.value)} placeholder="Username" className="w-full pl-10 pr-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-slate-50 focus:bg-white" /></div>
-                                <div className="relative"><Icons.Fingerprint size={18} className="absolute left-3 top-3.5 text-slate-400" /><input required type="password" inputMode="numeric" value={loginPin} onChange={(e)=>setLoginPin(e.target.value)} placeholder="PIN" className="w-full pl-10 pr-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-slate-50 focus:bg-white" /></div>
-                                <button className="w-full bg-emerald-600 text-white font-bold py-3 rounded-xl hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-200 mt-2">Login</button>
+                                <div className="relative"><Icons.User size={18} className="absolute left-3 top-3.5 text-slate-400" /><input required value={loginUsername} onChange={(e)=>setLoginUsername(e.target.value)} placeholder="Username" className="w-full pl-10 pr-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-logo-green-700 bg-slate-50 focus:bg-white" /></div>
+                                <div className="relative"><Icons.Fingerprint size={18} className="absolute left-3 top-3.5 text-slate-400" /><input required type="password" inputMode="numeric" value={loginPin} onChange={(e)=>setLoginPin(e.target.value)} placeholder="PIN" className="w-full pl-10 pr-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-logo-green-700 bg-slate-50 focus:bg-white" /></div>
+                                <button className="w-full bg-logo-green-700 text-white font-bold py-3 rounded-xl hover:bg-logo-green-600 transition-all shadow-lg shadow-logo-green-200 mt-2">Login</button>
                             </form>
                             {!isOnline && <p className="mt-4 text-xs text-red-400 flex items-center justify-center gap-1"><Icons.WifiOff size={12}/> You are offline</p>}
                         </div>
-                        {modal.isOpen && <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60"><div className="bg-white rounded-xl p-6 max-w-sm"><h3 className="font-bold mb-2">{modal.title}</h3><p className="mb-4 text-sm">{modal.message}</p><button onClick={closeModal} className="bg-emerald-600 text-white w-full py-2 rounded">Okay</button></div></div>}
+                        {modal.isOpen && <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60"><div className="bg-white rounded-xl p-6 max-w-sm"><h3 className="font-bold mb-2">{modal.title}</h3><p className="mb-4 text-sm">{modal.message}</p><div className="flex gap-2 justify-end">{modal.type==='confirm'&&<button onClick={closeModal} className="px-4 py-2 text-slate-500">Cancel</button>}<button onClick={modal.onConfirm||closeModal} className={`px-4 py-2 rounded text-white ${modal.confirmColor==='red'?'bg-red-500':'bg-logo-green-600'}`}>Okay</button></div></div></div>}
                     </div>
                 );
             }
@@ -518,14 +1056,15 @@
             // DASHBOARD
             return (
                 <div className="min-h-screen bg-slate-50 font-sans text-slate-800 pb-24 relative fade-in">
-                    <header className="bg-white border-b border-emerald-100 sticky top-0 z-20 shadow-sm">
+                    <header className="bg-white border-b border-logo-green-100 sticky top-0 z-20 shadow-sm">
                         <div className="max-w-3xl mx-auto px-4 py-3 flex justify-between items-center">
                             <div className="flex items-center gap-3">
-                                <div className={`p-2 rounded-lg shadow-md ${user.role==='admin'?'bg-emerald-600 shadow-emerald-200':'bg-slate-600 shadow-slate-200'}`}><Icons.Home size={22} className="text-white"/></div>
+                                {/* Logo replaced with icon */}
+                                <div className={`p-2 rounded-lg shadow-md ${user.role==='admin'?'bg-logo-green-700 shadow-logo-green-200':'bg-slate-600 shadow-slate-200'}`}><Icons.Home size={22} className="text-white"/></div>
                                 <div>
-                                    <h1 className="text-lg font-bold text-emerald-800 leading-tight">At HOME Spa</h1>
+                                    <h1 className="text-lg font-bold text-logo-green-800 leading-tight">At HOME Massage & Spa</h1>
                                     <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-wide text-slate-500">
-                                        <span className="bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded flex items-center gap-1"><Icons.MapPin size={10}/> {user.currentBranch}</span>
+                                        <span className="bg-logo-green-100 text-logo-green-700 px-2 py-0.5 rounded flex items-center gap-1"><Icons.MapPin size={10}/> {user.currentBranch}</span>
                                         <span className="flex items-center gap-1"><Icons.UserCircle2 size={10}/> {user.name}</span>
                                     </div>
                                 </div>
@@ -537,13 +1076,14 @@
 
                     <main className="max-w-3xl mx-auto px-4 py-6">
                         <div className="flex p-1 bg-slate-200/60 rounded-xl mb-6 sticky top-[70px] z-10 backdrop-blur-sm overflow-x-auto">
-                            <button onClick={()=>setView('dashboard')} className={`flex-1 min-w-[70px] py-2.5 text-xs font-semibold rounded-lg flex flex-col sm:flex-row items-center justify-center gap-1 ${view==='dashboard'?'bg-white text-emerald-700 shadow-sm':'text-slate-500'}`}><Icons.LayoutDashboard size={16}/> Daily</button>
-                            <button onClick={()=>setView('add')} className={`flex-1 min-w-[70px] py-2.5 text-xs font-semibold rounded-lg flex flex-col sm:flex-row items-center justify-center gap-1 ${view==='add'?'bg-white text-emerald-700 shadow-sm':'text-slate-500'}`}><Icons.Plus size={16}/> Booking</button>
-                            <button onClick={()=>setView('profile')} className={`flex-1 min-w-[70px] py-2.5 text-xs font-semibold rounded-lg flex flex-col sm:flex-row items-center justify-center gap-1 ${view==='profile'?'bg-white text-emerald-700 shadow-sm':'text-slate-500'}`}><Icons.UserCog size={16}/> Profile</button>
+                            <button onClick={()=>setView('dashboard')} className={`flex-1 min-w-[70px] py-2.5 text-xs font-semibold rounded-lg flex flex-col sm:flex-row items-center justify-center gap-1 ${view==='dashboard'?'bg-white text-logo-green-700 shadow-sm':'text-slate-500'}`}><Icons.LayoutDashboard size={16}/> Daily</button>
+                            <button onClick={()=>setView('add')} className={`flex-1 min-w-[70px] py-2.5 text-xs font-semibold rounded-lg flex flex-col sm:flex-row items-center justify-center gap-1 ${view==='add'?'bg-white text-logo-green-700 shadow-sm':'text-slate-500'}`}><Icons.Plus size={16}/> Booking</button>
+                            <button onClick={()=>setView('profile')} className={`flex-1 min-w-[70px] py-2.5 text-xs font-semibold rounded-lg flex flex-col sm:flex-row items-center justify-center gap-1 ${view==='profile'?'bg-white text-logo-green-700 shadow-sm':'text-slate-500'}`}><Icons.UserCog size={16}/> Profile</button>
                             {user.role === 'admin' && (
                                 <>
-                                    <button onClick={()=>setView('history')} className={`flex-1 min-w-[70px] py-2.5 text-xs font-semibold rounded-lg flex flex-col sm:flex-row items-center justify-center gap-1 ${view==='history'?'bg-white text-emerald-700 shadow-sm':'text-slate-500'}`}><Icons.History size={16}/> History</button>
-                                    <button onClick={()=>setView('team')} className={`flex-1 min-w-[70px] py-2.5 text-xs font-semibold rounded-lg flex flex-col sm:flex-row items-center justify-center gap-1 ${view==='team'?'bg-white text-emerald-700 shadow-sm':'text-slate-500'}`}><Icons.Users size={16}/> Team</button>
+                                    <button onClick={()=>setView('lists')} className={`flex-1 min-w-[70px] py-2.5 text-xs font-semibold rounded-lg flex flex-col sm:flex-row items-center justify-center gap-1 ${view==='lists'?'bg-white text-logo-green-700 shadow-sm':'text-slate-500'}`}><Icons.ShieldCheck size={16}/> Lists</button>
+                                    <button onClick={()=>setView('history')} className={`flex-1 min-w-[70px] py-2.5 text-xs font-semibold rounded-lg flex flex-col sm:flex-row items-center justify-center gap-1 ${view==='history'?'bg-white text-logo-green-700 shadow-sm':'text-slate-500'}`}><Icons.History size={16}/> History</button>
+                                    <button onClick={()=>setView('team')} className={`flex-1 min-w-[70px] py-2.5 text-xs font-semibold rounded-lg flex flex-col sm:flex-row items-center justify-center gap-1 ${view==='team'?'bg-white text-logo-green-700 shadow-sm':'text-slate-500'}`}><Icons.Users size={16}/> Team</button>
                                 </>
                             )}
                         </div>
@@ -551,17 +1091,16 @@
                         {view === 'dashboard' && (
                             <div className="space-y-6 fade-in">
                                 <div className="grid grid-cols-2 gap-3">
-                                    <div className="bg-white p-4 rounded-xl shadow-sm border border-emerald-100"><p className="text-slate-500 text-xs font-medium uppercase">Sales ({user.currentBranch})</p><h3 className="text-2xl font-bold text-slate-800 mt-1">{formatCurrency(stats.totalRevenue)}</h3></div>
-                                    <div className="bg-white p-4 rounded-xl shadow-sm border border-emerald-100"><p className="text-slate-500 text-xs font-medium uppercase">Unpaid</p><h3 className="text-2xl font-bold text-slate-800 mt-1">{formatCurrency(stats.pendingValue)}</h3></div>
+                                    <div className="bg-white p-4 rounded-xl shadow-sm border border-logo-green-100"><p className="text-slate-500 text-xs font-medium uppercase">Sales ({user.currentBranch})</p><h3 className="text-2xl font-bold text-slate-800 mt-1">{formatCurrency(stats.totalRevenue)}</h3></div>
+                                    <div className="bg-white p-4 rounded-xl shadow-sm border border-logo-green-100"><p className="text-slate-500 text-xs font-medium uppercase">Unpaid</p><h3 className="text-2xl font-bold text-slate-800 mt-1">{formatCurrency(stats.pendingValue)}</h3></div>
                                 </div>
 
-                                <div className="bg-white p-4 rounded-xl shadow-sm border border-emerald-100">
-                                    <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-4 flex items-center gap-2"><Icons.Trophy size={16} className="text-emerald-500"/> Therapist Handles (Today)</h3>
+                                <div className="bg-white p-4 rounded-xl shadow-sm border border-logo-green-100">
+                                    <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-4 flex items-center gap-2"><Icons.Trophy size={16} className="text-logo-green-700"/> Therapist Handles (Today)</h3>
                                     
                                     {Object.keys(therapistStats).length === 0 ? (
                                         <p className="text-sm text-slate-400 italic text-center py-2">No activity yet.</p>
                                     ) : (
-                                        // Sort branches alphabetically, but try to follow BRANCHES order if possible
                                         Object.keys(therapistStats).sort((a, b) => {
                                              const idxA = BRANCHES.indexOf(a);
                                              const idxB = BRANCHES.indexOf(b);
@@ -569,11 +1108,10 @@
                                              if (idxA === -1) return 1;
                                              if (idxB === -1) return -1;
                                              return idxA - idxB;
-                                        }).map(branch => (
+                                         }).map(branch => (
                                             <div key={branch} className="mb-4 last:mb-0">
-                                                {/* Only show branch header if in ALL mode or multiple branches exist */}
                                                 {(user.currentBranch === 'ALL' || Object.keys(therapistStats).length > 1) && (
-                                                    <h4 className="text-[10px] font-bold text-emerald-700 uppercase mb-2 bg-emerald-50 px-2 py-1 rounded inline-block">
+                                                    <h4 className="text-[10px] font-bold text-logo-green-700 uppercase mb-2 bg-logo-green-50 px-2 py-1 rounded inline-block">
                                                         {branch}
                                                     </h4>
                                                 )}
@@ -581,11 +1119,11 @@
                                                     {therapistStats[branch].map((s) => (
                                                         <div key={s.name} className="flex justify-between items-center pb-2 border-b border-slate-50 last:border-0 last:pb-0 ml-1">
                                                             <div className="flex gap-2 items-center">
-                                                                <span className="w-6 h-6 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center text-[10px] font-bold">{s.name.charAt(0)}</span>
+                                                                <span className="w-6 h-6 bg-logo-green-100 text-logo-green-700 rounded-full flex items-center justify-center text-[10px] font-bold">{s.name.charAt(0)}</span>
                                                                 <span className="text-sm font-semibold text-slate-700">{s.name}</span>
                                                             </div>
                                                             <div className="text-right flex flex-col">
-                                                                <span className="text-sm font-bold text-emerald-600">{s.count} <span className="text-[9px] font-normal text-slate-400 uppercase">Handles</span></span>
+                                                                <span className="text-sm font-bold text-logo-green-700">{s.count} <span className="text-[9px] font-normal text-slate-400 uppercase">Handles</span></span>
                                                                 {user.role === 'admin' && <span className="text-[9px] text-slate-400">{formatCurrency(s.amount)}</span>}
                                                             </div>
                                                         </div>
@@ -597,17 +1135,42 @@
                                 </div>
 
                                 <div>
-                                    <div className="flex justify-between items-center mb-4"><h2 className="text-lg font-bold text-emerald-900 flex gap-2"><Icons.LayoutDashboard size={18}/> Live Schedule</h2>{user.role==='admin'&&<button onClick={requestEndDay} className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-3 py-1.5 rounded-full border border-emerald-200 flex gap-1"><Icons.Archive size={12}/> End Day</button>}</div>
-                                    {filteredTransactions.length===0?<div className="text-center py-12 border border-dashed rounded-xl text-slate-400 text-sm">No bookings for {user.currentBranch} today.</div>:
+                                    <div className="flex justify-between items-center mb-4">
+                                        <h2 className="text-lg font-bold text-logo-green-900 flex gap-2">
+                                            <Icons.LayoutDashboard size={18}/> Live Schedule ({showMyShift ? 'My Shift' : user.currentBranch})
+                                        </h2>
+                                        <div className="flex items-center gap-2">
+                                            {user.role !== 'admin' && (
+                                                <button 
+                                                    onClick={() => setShowMyShift(!showMyShift)}
+                                                    className={`text-[10px] font-bold ${showMyShift ? 'bg-logo-green-700 text-white' : 'bg-logo-green-50 text-logo-green-700'} px-3 py-1.5 rounded-full border border-logo-green-200 flex gap-1 items-center transition-colors`}
+                                                >
+                                                    <Icons.User size={12}/> {showMyShift ? 'Showing My Shift' : 'Show Only Mine'}
+                                                </button>
+                                            )}
+                                            {user.role === 'admin' && (
+                                                <button onClick={requestEndDay} className="text-[10px] font-bold text-logo-green-700 bg-logo-green-50 px-3 py-1.5 rounded-full border border-logo-green-200 flex gap-1"><Icons.Archive size={12}/> End Day</button>
+                                            )}
+                                        </div>
+                                    </div>
+                                    {filteredTransactions.length===0?<div className="text-center py-12 border border-dashed rounded-xl text-slate-400 text-sm">No bookings found for the current filter.</div>:
                                     <div className="space-y-3">
                                         {filteredTransactions.map(t=>(
-                                            <div key={t.id} className={`bg-white p-4 rounded-xl border-l-[6px] flex justify-between items-center ${t.status==='completed'?'border-l-emerald-500':'border-l-orange-400'} shadow-sm`}>
+                                            <div key={t.id} className={`bg-white p-4 rounded-xl border-l-[6px] flex justify-between items-center ${t.status==='completed'?'border-l-logo-green-500':'border-l-orange-400'} shadow-sm`}>
                                                 <div className="flex-1">
-                                                    <div className="flex gap-2 mb-1 items-center"><span className="text-[10px] font-bold bg-slate-100 px-2 rounded text-slate-500">{t.branch}</span><span className="text-xs font-mono text-slate-400">{t.time}</span></div>
+                                                    {/* Displaying timestamp date for consistency */}
+                                                    <div className="flex gap-2 mb-1 items-center">
+                                                        <span className="text-[10px] font-bold bg-slate-100 px-2 rounded text-slate-500">{t.branch}</span>
+                                                        <span className="text-xs font-mono text-slate-400">{formatDate(t.timestamp)} - {t.time}</span>
+                                                    </div>
                                                     <h3 className="font-bold text-slate-800">{t.clientName}</h3>
-                                                    <div className="text-xs text-slate-500 mt-1 flex gap-2"><span>{t.service}</span> • <span>{t.therapist}</span></div>
+                                                    <div className="text-xs text-slate-500 mt-1 flex gap-2 flex-wrap">
+                                                        <span>{t.service}</span>
+                                                        {t.duration && <span> • {t.duration}</span>}
+                                                        <span> • {t.therapist}</span>
+                                                    </div>
                                                 </div>
-                                                <div className="text-right"><div className="font-bold text-lg">{formatCurrency(t.amount)}</div><div className="flex justify-end gap-2 mt-1"><button onClick={()=>toggleStatus(t)} className={`p-1.5 rounded-full ${t.status==='completed'?'bg-emerald-100 text-emerald-600':'bg-orange-100 text-orange-600'}`}>{t.status==='completed'?<Icons.CheckCircle2 size={16}/>:<Icons.DollarSign size={16}/>}</button>{user.role==='admin'&&<button onClick={()=>requestDelete(t.id)} className="p-1.5 text-slate-300 hover:text-red-500"><Icons.Trash2 size={16}/></button>}</div></div>
+                                                <div className="text-right"><div className="font-bold text-lg">{formatCurrency(t.amount)}</div><div className="flex justify-end gap-2 mt-1"><button onClick={()=>toggleStatus(t)} className={`p-1.5 rounded-full ${t.status==='completed'?'bg-logo-green-100 text-logo-green-700':'bg-orange-100 text-orange-600'}`}>{t.status==='completed'?<Icons.CheckCircle2 size={16}/>:<Icons.DollarSign size={16}/>}</button>{user.role==='admin'&&<button onClick={()=>requestDelete(t.id)} className="p-1.5 text-slate-300 hover:text-red-500"><Icons.Trash2 size={16}/></button>}</div></div>
                                             </div>
                                         ))}
                                     </div>}
@@ -616,53 +1179,150 @@
                         )}
 
                         {view === 'add' && (
-                            <div className="bg-white rounded-2xl shadow-sm border border-emerald-100 p-6 fade-in">
-                                <h2 className="text-xl font-bold text-slate-800 mb-6 flex items-center gap-2"><Icons.Plus size={24} className="text-emerald-600"/> New Booking</h2>
+                            <div className="bg-white rounded-2xl shadow-sm border border-logo-green-100 p-6 fade-in">
+                                <h2 className="text-xl font-bold text-slate-800 mb-6 flex items-center gap-2"><Icons.Plus size={24} className="text-logo-green-700"/> New Booking</h2>
                                 <form onSubmit={handleSubmit} className="space-y-5">
-                                    <div className="p-3 bg-emerald-50 rounded-lg text-sm text-emerald-800 font-medium flex items-center gap-2"><Icons.MapPin size={16}/> Adding to: {user.currentBranch}</div>
+                                    
+                                    {/* Conditional Branch Selector for Owner Admin */}
+                                    {user.currentBranch === 'ALL' ? (
+                                        <div className="relative">
+                                            <Icons.MapPin size={18} className="absolute left-3 top-3.5 text-slate-400" />
+                                            <select 
+                                                required 
+                                                value={formData.targetBranch} 
+                                                onChange={(e)=>setFormData({...formData, targetBranch:e.target.value})} 
+                                                className="w-full pl-10 pr-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-logo-green-700 bg-slate-50 focus:bg-white appearance-none text-slate-600 font-bold border-logo-green-400"
+                                            >
+                                                <option value="" disabled>SELECT TARGET BRANCH*</option>
+                                                {BRANCHES.map(b => <option key={b} value={b}>{b}</option>)}
+                                            </select>
+                                            <Icons.ChevronDown size={16} className="absolute right-3 top-4 text-slate-400 pointer-events-none"/>
+                                        </div>
+                                    ) : (
+                                        <div className="p-3 bg-logo-green-50 rounded-lg text-sm text-logo-green-800 font-medium flex items-center gap-2"><Icons.MapPin size={16}/> Adding to: {user.currentBranch}</div>
+                                    )}
+
                                     <div className="grid grid-cols-2 gap-4">
-                                        <label className={`border-2 rounded-xl p-3 flex flex-col items-center gap-2 ${formData.type==='booking'?'border-emerald-600 bg-emerald-50/50':'border-slate-100'}`}><input type="radio" name="type" value="booking" checked={formData.type==='booking'} onChange={(e)=>setFormData({...formData, type:e.target.value})} className="hidden"/><Icons.Calendar/><span className="text-sm font-bold">Appointment</span></label>
+                                        <label className={`border-2 rounded-xl p-3 flex flex-col items-center gap-2 ${formData.type==='booking'?'border-logo-green-700 bg-logo-green-50/50':'border-slate-100'}`}><input type="radio" name="type" value="booking" checked={formData.type==='booking'} onChange={(e)=>setFormData({...formData, type:e.target.value})} className="hidden"/><Icons.Calendar/><span className="text-sm font-bold">Appointment</span></label>
                                         <label className={`border-2 rounded-xl p-3 flex flex-col items-center gap-2 ${formData.type==='sale'?'border-teal-600 bg-teal-50/50':'border-slate-100'}`}><input type="radio" name="type" value="sale" checked={formData.type==='sale'} onChange={(e)=>setFormData({...formData, type:e.target.value})} className="hidden"/><Icons.DollarSign/><span className="text-sm font-bold">Direct Pay</span></label>
                                     </div>
-                                    <input required placeholder="Client Name" value={formData.clientName} onChange={e=>setFormData({...formData, clientName:e.target.value})} className="w-full p-3 border rounded-xl bg-slate-50"/>
-                                    <div className="grid grid-cols-2 gap-4">
-                                        <input placeholder="Service" value={formData.service} onChange={e=>setFormData({...formData, service:e.target.value})} className="w-full p-3 border rounded-xl bg-slate-50"/>
-                                        <input placeholder="Therapist" value={formData.therapist} onChange={e=>setFormData({...formData, therapist:e.target.value})} className="w-full p-3 border rounded-xl bg-slate-50"/>
+                                    <input required placeholder="Client Name*" value={formData.clientName} onChange={e=>setFormData({...formData, clientName:e.target.value})} className="w-full p-3 border rounded-xl bg-slate-50"/>
+                                    
+                                    <div className="space-y-4">
+                                        {/* Service Dropdown */}
+                                        <select required value={formData.service} onChange={e=>handleServiceChange(e.target.value)} className="w-full p-3 border rounded-xl bg-slate-50 appearance-none">
+                                            <option value="" disabled>Select Service*</option>
+                                            {servicesList.map(s => <option key={s.id} value={s.name}>{s.name} ({formatCurrency(s.price)})</option>)}
+                                        </select>
+                                        
+                                        {/* Duration Dropdown */}
+                                        <select value={formData.duration} onChange={e=>setFormData({...formData, duration:e.target.value})} className="w-full p-3 border rounded-xl bg-slate-50 appearance-none">
+                                            <option value="" disabled>Select Duration</option>
+                                            {durationsList.map(d => <option key={d.id} value={d.name}>{d.name}</option>)}
+                                        </select>
+
+                                        {/* Therapist Dropdown */}
+                                        <select required value={formData.therapist} onChange={e=>setFormData({...formData, therapist:e.target.value})} className="w-full p-3 border rounded-xl bg-slate-50 appearance-none">
+                                            <option value="" disabled>Select Therapist*</option>
+                                            {therapistsList.map(t => <option key={t.id} value={t.name}>{t.name}</option>)}
+                                        </select>
                                     </div>
+                                    
                                     <div className="grid grid-cols-2 gap-4">
-                                        <input required type="number" step="0.01" placeholder="Price" value={formData.amount} onChange={e=>setFormData({...formData, amount:e.target.value})} className="w-full p-3 border rounded-xl bg-slate-50"/>
+                                        {/* Price is now editable and required, auto-filled by service selection */}
+                                        <input required 
+                                            type="number" step="0.01" 
+                                            placeholder="Price (P)*" 
+                                            value={formData.amount} 
+                                            onChange={e=>setFormData({...formData, amount:e.target.value})} 
+                                            className="w-full p-3 border rounded-xl bg-slate-50"
+                                        />
                                         <input type="time" value={formData.time} onChange={e=>setFormData({...formData, time:e.target.value})} className="w-full p-3 border rounded-xl bg-slate-50"/>
                                     </div>
-                                    <button className="w-full bg-emerald-600 text-white font-bold py-4 rounded-xl shadow-lg mt-2">Save Booking</button>
+                                    <button className="w-full bg-logo-green-700 text-white font-bold py-4 rounded-xl shadow-lg mt-2">Save Booking</button>
                                 </form>
                             </div>
                         )}
 
                         {view === 'profile' && (
-                            <div className="bg-white rounded-xl shadow-sm border border-emerald-100 p-6 fade-in">
-                                <h3 className="font-bold text-slate-800 mb-4 flex gap-2"><Icons.UserCog className="text-emerald-600"/> Profile</h3>
-                                <div className="bg-slate-50 p-4 rounded-xl border mb-6"><p className="text-xs text-slate-400 uppercase font-bold">Account</p><p className="font-bold text-emerald-800 text-lg">{user.name}</p></div>
+                            <div className="bg-white rounded-xl shadow-sm border border-logo-green-100 p-6 fade-in">
+                                <h3 className="font-bold text-slate-800 mb-4 flex gap-2"><Icons.UserCog className="text-logo-green-700"/> Profile</h3>
+                                <div className="bg-slate-50 p-4 rounded-xl border mb-6"><p className="text-xs text-slate-400 uppercase font-bold">Account</p><p className="font-bold text-logo-green-800 text-lg">{user.name}</p></div>
                                 <form onSubmit={handleUpdateProfile} className="space-y-4">
                                     <input required value={profileData.username} onChange={e=>setProfileData({...profileData, username:e.target.value})} className="w-full p-3 border rounded-lg" placeholder="New Username"/>
-                                    <input required type="text" inputMode="numeric" maxLength="4" value={profileData.pin} onChange={e=>setProfileData({...profileData, pin:e.target.value})} className="w-full p-3 border rounded-lg font-mono" placeholder="New PIN"/>
-                                    <button className="w-full bg-emerald-600 text-white font-bold py-3 rounded-lg">Update Credentials</button>
+                                    <input type="password" inputMode="numeric" maxLength="4" value={profileData.pin} onChange={e=>setProfileData({...profileData, pin:e.target.value})} className="w-full p-3 border rounded-lg font-mono" placeholder="New PIN (Leave blank to keep old)"/>
+                                    <button className="w-full bg-logo-green-700 text-white font-bold py-3 rounded-lg">Update Credentials</button>
                                 </form>
                             </div>
+                        )}
+                        
+                        {/* Data List Management View */}
+                        {view === 'lists' && user.role === 'admin' && (
+                            <ListManagement 
+                                therapists={therapistsList} 
+                                services={servicesList}
+                                durations={durationsList}
+                                onAdd={handleAddItem} 
+                                onDelete={handleDeleteItem}
+                            />
                         )}
 
                         {view === 'team' && user.role === 'admin' && (
                             <div className="space-y-6 fade-in">
-                                <h2 className="text-lg font-bold text-emerald-900 flex gap-2"><Icons.Users/> Manage Staff</h2>
+                                <h2 className="text-lg font-bold text-logo-green-900 flex gap-2"><Icons.Users/> Manage Staff</h2>
                                 <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
-                                    {users.map(u=><div key={u.id} className="p-4 border-b flex justify-between items-center"><div><h3 className="font-bold">{u.name}</h3><p className="text-xs text-slate-400">@{u.username} • PIN: {u.pin}</p></div><button onClick={()=>handleDeleteUser(u.id)} className="text-slate-300 hover:text-red-500"><Icons.Trash2/></button></div>)}
+                                    {users.filter(u => {
+                                        // Owner Admin sees everyone
+                                        if (user.username === 'admin') {
+                                            return true;
+                                        }
+
+                                        // Regular Admin/Staff only sees staff accounts OR themselves
+                                        return u.id === user.id || u.role === 'staff';
+                                    }).map(u=>(
+                                        <div 
+                                            key={u.id} 
+                                            className="p-4 border-b flex justify-between items-center hover:bg-slate-50 transition"
+                                        >
+                                            <div>
+                                                <h3 className="font-bold">{u.name} {u.username === 'admin' && <span className="text-xs font-mono text-logo-green-700 bg-logo-green-100 px-1 rounded-sm">OWNER</span>}</h3>
+                                                <p className="text-xs text-slate-400">
+                                                    @{u.username} • HASHED PIN
+                                                </p>
+                                            </div>
+                                            <div className="flex gap-2 items-center">
+                                                {/* Explicit View/Reset PIN button (Owner Admin only) */}
+                                                {user.username === 'admin' && (
+                                                    <button
+                                                        onClick={(e)=>{e.stopPropagation(); setEditUserModal({ isOpen: true, user: u, newPin: '' });}}
+                                                        className="text-slate-300 hover:text-logo-green-700 p-1"
+                                                        title="View Username / Reset PIN"
+                                                    >
+                                                        <Icons.Lock size={16}/>
+                                                    </button>
+                                                )}
+
+                                                {/* Delete button visible to all Admins */}
+                                                {user.role === 'admin' && (
+                                                    <button 
+                                                        onClick={(e)=>{e.stopPropagation(); handleDeleteUser(u.id)}} 
+                                                        className="text-slate-300 hover:text-red-500 p-1"
+                                                        title="Delete User"
+                                                    >
+                                                        <Icons.Trash2 size={16}/>
+                                                    </button>
+                                                )}
+                                            </div>
+                                        </div>
+                                    ))}
                                 </div>
                                 <div className="bg-white rounded-xl shadow-sm border p-6">
                                     <h3 className="font-bold mb-4">Add Staff</h3>
                                     <form onSubmit={handleAddUser} className="space-y-4">
                                         <input required placeholder="Name" value={newUser.name} onChange={e=>setNewUser({...newUser, name:e.target.value})} className="w-full p-2 border rounded"/>
                                         <input required placeholder="Username" value={newUser.username} onChange={e=>setNewUser({...newUser, username:e.target.value})} className="w-full p-2 border rounded"/>
-                                        <div className="flex gap-2"><input required maxLength="4" placeholder="PIN" value={newUser.pin} onChange={e=>setNewUser({...newUser, pin:e.target.value})} className="w-full p-2 border rounded"/><select value={newUser.role} onChange={e=>setNewUser({...newUser, role:e.target.value})} className="w-full p-2 border rounded"><option value="staff">Staff</option><option value="admin">Admin</option></select></div>
-                                        <button className="w-full bg-emerald-600 text-white py-2 rounded font-bold">Add User</button>
+                                        <div className="flex gap-2"><input required maxLength="4" placeholder="PIN (Min 4 digits)" type="password" inputMode="numeric" value={newUser.pin} onChange={e=>setNewUser({...newUser, pin:e.target.value})} className="w-full p-2 border rounded"/><select value={newUser.role} onChange={e=>setNewUser({...newUser, role:e.target.value})} className="w-full p-2 border rounded"><option value="staff">Staff</option><option value="admin">Admin</option></select></div>
+                                        <button className="w-full bg-logo-green-700 text-white py-2 rounded font-bold">Add User</button>
                                     </form>
                                 </div>
                             </div>
@@ -670,25 +1330,117 @@
 
                         {view === 'history' && user.role === 'admin' && (
                             <div className="space-y-4 fade-in">
-                                <h2 className="text-lg font-bold text-emerald-900 flex gap-2"><Icons.History/> History</h2>
-                                {history.map(h => (
-                                    <div key={h.id} className="bg-white rounded-xl shadow-sm border overflow-hidden">
-                                        <div onClick={()=>setExpandedHistoryId(expandedHistoryId===h.id?null:h.id)} className="p-4 flex justify-between items-center cursor-pointer">
-                                            <div><h3 className="font-bold text-slate-800">{h.date}</h3><p className="text-xs text-slate-400">{h.branch || 'Unknown'} • Closed by {h.closedBy}</p></div>
-                                            <div className="flex items-center gap-4"><button onClick={(e)=>{e.stopPropagation();downloadCSV(h)}}><Icons.Download size={20} className="text-slate-400 hover:text-emerald-600"/></button><span className="font-bold text-emerald-600">{formatCurrency(h.stats.totalRevenue)}</span>{expandedHistoryId===h.id?<Icons.ChevronUp size={20} className="text-slate-400"/>:<Icons.ChevronDown size={20} className="text-slate-400"/>}</div>
-                                        </div>
-                                        {expandedHistoryId===h.id && <div className="bg-slate-50 p-4 border-t text-sm">{h.transactions.map((t,i)=><div key={i} className="flex justify-between py-2 border-b last:border-0"><span>{t.time} - {t.clientName}</span><span className="font-bold">{formatCurrency(t.amount)}</span></div>)}</div>}
+                                <h2 className="text-lg font-bold text-logo-green-900 flex gap-2"><Icons.History/> History</h2>
+                                
+                                {/* Date Range Filters */}
+                                <div className="bg-white p-4 rounded-xl shadow-sm border border-logo-green-100 grid grid-cols-2 gap-3">
+                                    <div>
+                                        <label className="block text-xs font-medium text-slate-500 mb-1">Start Date</label>
+                                        <input type="date" value={historyStartDate} onChange={(e) => setHistoryStartDate(e.target.value)} className="w-full p-2 border rounded-lg bg-slate-50 text-sm"/>
                                     </div>
-                                ))}
+                                    <div>
+                                        <label className="block text-xs font-medium text-slate-500 mb-1">End Date</label>
+                                        <input type="date" value={historyEndDate} onChange={(e) => setHistoryEndDate(e.target.value)} className="w-full p-2 border rounded-lg bg-slate-50 text-sm"/>
+                                    </div>
+                                </div>
+
+                                {filteredHistory.length === 0 ? (
+                                    <div className="text-center py-12 border border-dashed rounded-xl text-slate-400 text-sm">No historical reports found for this period.</div>
+                                ) : (
+                                    filteredHistory.map(h => (
+                                        <div key={h.id} className="bg-white rounded-xl shadow-sm border overflow-hidden">
+                                            <div onClick={()=>setExpandedHistoryId(expandedHistoryId===h.id?null:h.id)} className="p-4 flex justify-between items-center cursor-pointer">
+                                                <div><h3 className="font-bold text-slate-800">{h.date}</h3><p className="text-xs text-slate-400">{h.branch || 'Unknown'} • Closed by {h.closedBy}</p></div>
+                                                <div className="flex items-center gap-4">
+                                                    <button onClick={(e)=>{e.stopPropagation();downloadCSV(h)}} title="Download CSV"><Icons.Download size={20} className="text-slate-400 hover:text-logo-green-700"/></button>
+                                                    <button onClick={(e)=>{e.stopPropagation();handleDeleteHistory(h.id, h.date)}} title="Delete Report"><Icons.Trash2 size={20} className="text-slate-400 hover:text-red-500"/></button>
+                                                    <span className="font-bold text-logo-green-700">{formatCurrency(h.stats.totalRevenue)}</span>
+                                                    {expandedHistoryId===h.id?<Icons.ChevronUp size={20} className="text-slate-400"/>:<Icons.ChevronDown size={20} className="text-slate-400"/>}
+                                                </div>
+                                            </div>
+                                            {expandedHistoryId===h.id && <div className="bg-slate-50 p-4 border-t text-sm">{h.transactions.map((t,i)=><div key={i} className="flex justify-between py-2 border-b last:border-0"><span>{t.time} - {t.clientName} ({t.service})</span><span className="font-bold">{formatCurrency(t.amount)}</span></div>)}</div>}
+                                        </div>
+                                    ))
+                                )}
                             </div>
                         )}
 
-                        {modal.isOpen && <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60"><div className="bg-white rounded-xl p-6 max-w-sm"><h3 className="font-bold mb-2">{modal.title}</h3><p className="mb-4 text-sm">{modal.message}</p><div className="flex gap-2 justify-end">{modal.type==='confirm'&&<button onClick={closeModal} className="px-4 py-2 text-slate-500">Cancel</button>}<button onClick={modal.onConfirm||closeModal} className={`px-4 py-2 rounded text-white ${modal.confirmColor==='red'?'bg-red-500':'bg-emerald-600'}`}>Okay</button></div></div></div>}
+                        {/* Global Modal */}
+                        {modal.isOpen && <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60"><div className="bg-white rounded-xl p-6 max-w-sm"><h3 className="font-bold mb-2">{modal.title}</h3><p className="mb-4 text-sm">{modal.message}</p><div className="flex gap-2 justify-end">{modal.type==='confirm'&&<button onClick={closeModal} className="px-4 py-2 text-slate-500">Cancel</button>}<button onClick={modal.onConfirm||closeModal} className={`px-4 py-2 rounded text-white ${modal.confirmColor==='red'?'bg-red-500':'bg-logo-green-600'}`}>Okay</button></div></div></div>}
                     </main>
-                    {view === 'dashboard' && <button onClick={()=>setView('add')} className="fixed bottom-6 right-6 bg-emerald-600 text-white p-4 rounded-full shadow-lg hover:scale-105 transition-transform"><Icons.Plus size={28}/></button>}
+                    {view === 'dashboard' && <button onClick={()=>setView('add')} className="fixed bottom-6 right-6 bg-logo-green-700 text-white p-4 rounded-full shadow-lg hover:scale-105 transition-transform"><Icons.Plus size={28}/></button>}
+
+                    {/* Admin Reset User Modal is rendered inside App component now */}
+                    <AdminResetUserModal 
+                        editUserModal={editUserModal} 
+                        setEditUserModal={setEditUserModal} 
+                        handleResetPin={handleResetPin}
+                    />
                 </div>
             );
         };
+        
+        // NEW: Admin Reset User Modal Component (Defined outside of the main App function)
+        const AdminResetUserModal = ({ editUserModal, setEditUserModal, handleResetPin }) => {
+            if (!editUserModal.isOpen || !editUserModal.user) return null;
+
+            const user = editUserModal.user;
+            
+            return (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 fade-in">
+                    <div className="bg-white rounded-xl p-6 w-full max-w-sm">
+                        <h3 className="text-xl font-bold text-logo-green-800 mb-4 flex items-center gap-2">
+                            <Icons.UserCog size={24}/> Reset Staff Credentials
+                        </h3>
+
+                        <div className="bg-slate-50 p-4 rounded-lg mb-4">
+                            <p className="text-xs text-slate-500 uppercase font-bold">Staff Name:</p>
+                            <p className="font-bold text-slate-800 text-lg mb-2">{user.name}</p>
+
+                            <p className="text-xs text-slate-500 uppercase font-bold">Username:</p>
+                            <p className="font-mono text-logo-green-700 text-sm">@{user.username}</p>
+                        </div>
+
+                        <form onSubmit={(e) => {
+                            e.preventDefault();
+                            // Call the handler provided by the parent App component
+                            handleResetPin(e);
+                        }} className="space-y-4">
+                            <label className="block">
+                                <span className="text-sm font-semibold text-slate-700 block mb-1">Set New PIN (4+ Digits)</span>
+                                <input
+                                    required
+                                    type="password"
+                                    inputMode="numeric"
+                                    maxLength="4"
+                                    value={editUserModal.newPin}
+                                    onChange={(e) => setEditUserModal({ ...editUserModal, newPin: e.target.value })}
+                                    placeholder="Enter new 4-digit PIN"
+                                    className="w-full p-3 border rounded-lg font-mono focus:ring-2 focus:ring-logo-green-500"
+                                />
+                            </label>
+
+                            <div className="flex justify-end gap-2 pt-2">
+                                <button 
+                                    type="button"
+                                    onClick={() => setEditUserModal({ isOpen: false, user: null, newPin: '' })} 
+                                    className="px-4 py-2 text-slate-500 rounded hover:bg-slate-100"
+                                >
+                                    Cancel
+                                </button>
+                                <button 
+                                    type="submit" 
+                                    className="px-4 py-2 rounded text-white bg-logo-green-600 hover:bg-logo-green-700 font-bold"
+                                >
+                                    Reset PIN
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            );
+        };
+
 
         const root = ReactDOM.createRoot(document.getElementById('root'));
         root.render(<App />);
