@@ -636,7 +636,10 @@
                 }
             }, [formData.service, formData.duration, servicesList, view]);
 
-            const formatCurrency = (val) => new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(val);
+            const formatCurrency = (val) => {
+                if (val === undefined || val === null || val === '') return '';
+                return new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(val);
+            };
             
             const formatDate = (timestamp) => {
                 if (!timestamp) return 'N/A';
@@ -845,6 +848,30 @@
                 } else {
                     setModal({ isOpen: true, type: 'alert', title: 'Login Failed', message: 'Check credentials.', onConfirm: closeModal, confirmColor: 'red' });
                 }
+            };
+
+            const handleServiceChange = (serviceName) => {
+                const foundService = servicesList.find(s => s.name === serviceName);
+                let newFormData = { ...formData, service: serviceName };
+                
+                // Logic:
+                // 1. If Duration is already selected, try to find price for that duration in the new service.
+                // 2. If found, set it.
+                // 3. If NOT found (maybe this service doesn't have that duration?), try base price.
+                // 4. If no base price, clear amount.
+                
+                let newPrice = '';
+                
+                if (foundService) {
+                    if (formData.duration && foundService.prices && foundService.prices[formData.duration]) {
+                        newPrice = foundService.prices[formData.duration];
+                    } else if (foundService.price) {
+                        newPrice = foundService.price;
+                    }
+                }
+                
+                newFormData.amount = newPrice;
+                setFormData(newFormData);
             };
 
             const handleSubmit = async (e) => {
@@ -1308,7 +1335,7 @@
                                         {/* Service Dropdown */}
                                         <select required value={formData.service} onChange={e=>handleServiceChange(e.target.value)} className="w-full p-3 border rounded-xl bg-slate-50 appearance-none">
                                             <option value="" disabled>Select Service*</option>
-                                            {servicesList.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
+                                            {servicesList.map(s => <option key={s.id} value={s.name}>{s.name} {s.price ? `(${formatCurrency(s.price)})` : ''}</option>)}
                                         </select>
                                         
                                         {/* Duration Dropdown */}
@@ -1498,11 +1525,7 @@
                             <p className="font-mono text-logo-green-700 text-sm">@{user.username}</p>
                         </div>
 
-                        <form onSubmit={(e) => {
-                            e.preventDefault();
-                            // Call the handler provided by the parent App component
-                            handleResetPin(e);
-                        }} className="space-y-4">
+                        <form onSubmit={handleResetPin} className="space-y-4">
                             <label className="block">
                                 <span className="text-sm font-semibold text-slate-700 block mb-1">Set New PIN (4+ Digits)</span>
                                 <input
@@ -1520,7 +1543,7 @@
                             <div className="flex justify-end gap-2 pt-2">
                                 <button 
                                     type="button"
-                                    onClick={() => setEditUserModal({ isOpen: false, user: null, newPin: '' })} 
+                                    onClick={closeEditUserModal} 
                                     className="px-4 py-2 text-slate-500 rounded hover:bg-slate-100"
                                 >
                                     Cancel
